@@ -1,10 +1,10 @@
 <div align="center">
 
-# HandBrake FinalSIzeCalculator
+# HandBrake FinalSizeCalculator
 
 ### Know what your encode might cost in storage—before you commit to the full encode.
 
-A compact, local-first desktop companion for HandBrake. See a quick output-size estimate and the settings behind it, without uploading your media or quietly starting a full encode.
+A compact, local-first desktop companion for HandBrake, implemented as a native Rust desktop application. See a quick output-size estimate and the settings behind it, without uploading your media or starting a full encode.
 
 </div>
 
@@ -12,19 +12,19 @@ A compact, local-first desktop companion for HandBrake. See a quick output-size 
 
 ## A clearer answer before you encode
 
-Configure your job in HandBrake, open the predictor, and review the estimate alongside a concise summary of the active settings. When HandBrake exposes the information, the app synchronizes it for you; otherwise, the relevant fields remain available for manual entry.
+Add the job to HandBrake's queue, open the predictor, select that queue entry, and review the estimate alongside its settings. FSC reads job data only from the queue; it does not use live UI Automation, scan a separately selected source, or ask you to enter encoding settings.
 
 **No account. No media uploads. No analytics. No surprise full encode.**
 
 ## What it does
 
 - **Estimates average-bitrate output size** from video bitrate, duration, and each known audio contribution.
-- **Accounts for passthrough audio** using locally probed source-stream data when it can be matched reliably.
+- **Accounts for passthrough audio** using source-stream data contained in the selected queue entry when it can be matched reliably.
 - **Shows partial estimates honestly** when a contribution is unknown, rather than filling gaps with invented defaults.
-- **Reads source metadata locally** with an installed `ffprobe` when available, and uses HandBrakeCLI scanning as a fallback.
-- **Synchronizes visible HandBrake settings on Windows** using Windows UI Automation, with read-only access to local queue data for queued jobs.
+- **Reads queued source and encode settings directly from HandBrake's local queue files.**
+- **Selects the newest queued job automatically** and switches to newly added jobs while keeping the queue selector available.
 - **Remembers completed results locally** so comparable real encodes can inform future constant-quality estimates.
-- **Keeps the interface focused** on the predicted size, a short input summary, and scan status.
+- **Uses a compact, estimate-first native utility panel** with a fixed queue selector and expandable details, and no Electron, Chromium, Node.js, JavaScript, or web frontend.
 
 ## An estimate, not a guarantee
 
@@ -37,15 +37,11 @@ Predictions have **not yet been validated against completed encodes across repre
 
 ## HandBrake integration
 
-On Windows, the app reads HandBrake through built-in Windows UI Automation. On first detection, it reviews the accessible settings tabs once and restores the previously selected tab. Later refreshes read the currently selected tab; changing tabs refreshes that tab's cached values. The app does not inject into HandBrake, alter its process, or start an encode to inspect a job.
-
-The active, unqueued job is not fully available through a supported external HandBrake API. Some settings may therefore be unavailable through accessibility, especially details inside audio and subtitle row templates. The app identifies unavailable fields instead of presenting preset defaults as the user's active choices. Full source paths may be recovered from the local HandBrake activity log; source probing runs only when a path is available.
-
-Use **Locate HandBrakeCLI** to select a CLI executable, or set `HANDBRAKE_CLI` before launch. HandBrakeCLI source scanning is a metadata fallback; it is not used to encode the entire video for a prediction.
+FSC reads HandBrake's local queue JSON and lists its waiting and in-progress jobs in queue order. It selects the last (newest) job on startup and switches to a newly added job as soon as it appears in the queue. You can still select another job manually. The queue refreshes automatically every couple of seconds and can also be refreshed manually. FSC does not read the active GUI tabs, invoke HandBrakeCLI or ffprobe, or provide manual encoding-setting inputs. Queue entries are snapshots: changing a job's settings after it was added may not update the snapshot; remove and re-add the job in HandBrake to refresh it. FSC never starts an encode.
 
 ## Privacy and local data
 
-Media probing and prediction run on your computer. Source files are read for metadata only; they are not modified or uploaded. HandBrake integration reads accessible GUI information and local HandBrake files. Calibration history and the selected CLI path are stored locally by the app.
+Prediction uses locally stored HandBrake queue data and local calibration history. FSC does not inspect or modify the video source file, start an encode, or upload data.
 
 ## Technical notes
 
@@ -54,7 +50,19 @@ Media probing and prediction run on your computer. Source files are read for met
 - Burned-in subtitles are part of the video image and are not counted as an additional stream. Unknown separate subtitle payload and variable container/mux overhead can make final size differ.
 - Two-pass encoding does not receive an arbitrary size multiplier.
 - Sizes are calculated from decimal bitrates; the UI reports binary GiB and decimal GB.
-- Windows live integration was developed against HandBrake 1.11.2. UI Automation is version- and accessibility-dependent.
+- HandBrake queue parsing follows HandBrake's local queue JSON format. Only waiting and in-progress entries are listed.
+
+## Build and run
+
+Install the Rust stable toolchain, then run:
+
+```powershell
+cargo run
+cargo test
+cargo build --release
+```
+
+On Windows, the optimized standalone executable is `target\release\handbrake-fsc.exe`. The release profile enables link-time optimization and symbol stripping. No JavaScript package installation or Electron runtime is required.
 
 For details on HandBrake's own options, see the [CLI command-line reference](https://handbrake.fr/docs/en/latest/cli/command-line-reference.html), [CLI options guide](https://handbrake.fr/docs/en/latest/cli/cli-options.html), and [official presets](https://handbrake.fr/docs/en/latest/technical/official-presets.html).
 
@@ -62,8 +70,8 @@ For details on HandBrake's own options, see the [CLI command-line reference](htt
 
 | Path | Purpose |
 | --- | --- |
-| `src/main` | Electron main process, local probing, and HandBrake integration |
-| `src/preload` | Context-isolated bridge between the app and UI |
-| `src/renderer` | Compact desktop interface |
-| `src/shared` | Types, parsers, prediction math, and calibration helpers |
-
+| `src/main.rs` | Native egui application entry point |
+| `src/ui.rs` | Desktop UI and user interactions |
+| `src/handbrake.rs` | HandBrake queue parsing |
+| `src/prediction.rs` | Size estimation and calibration matching |
+| `src/calibration.rs` | Local completed-encode history |
